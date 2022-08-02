@@ -2,7 +2,6 @@ package pkg
 
 import (
 	"context"
-	"log"
 	"math/rand"
 	"strings"
 	"sync"
@@ -15,27 +14,36 @@ func Worker(ctx context.Context, wg *sync.WaitGroup, m *sync.Map, rateLimitChan 
 	defer wg.Done()
 	counter := 0
 
-	htmlPage, err := GetHtmlPage(site)
+	htmlPage, status, err := GetHtmlPage(site)
 	if err != nil {
-		m.Store(site, err) // TODO: получать statusCode
+		m.Store(site, status)
 		return
 	}
+
 	token := html.NewTokenizer(strings.NewReader(htmlPage))
+
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("worker stopping work")
-			if counter > 0 {
-				m.Store(site, counter)
-			}
+			m.Store(site, "cancel")
 			return
-		default:
-			time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
-			if token.Next() == html.ErrorToken {
-				m.Store(site, counter)
-				return
-			} else {
-				counter++
+		case rateLimitChan <- struct{}{}:
+			for {
+				select {
+				case <-ctx.Done():
+					m.Store(site, "cancel")
+					return
+				default:
+					// задержка для возможности проверки корректного срабатывания прерывания программы
+					time.Sleep(time.Duration(rand.Intn(2)) * time.Millisecond)
+					if token.Next() == html.ErrorToken {
+						m.Store(site, counter)
+						<-rateLimitChan
+						return
+					} else {
+						counter++
+					}
+				}
 			}
 		}
 	}

@@ -3,17 +3,19 @@ package main
 import (
 	"context"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/Sidio01/site_string_counter/application"
 )
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer cancel()
-	go application.Start(ctx)
-	<-ctx.Done()
+	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go application.Start(ctx, wg)
+	wg.Wait()
+
 	application.Stop(ctx)
 }
-
-// go run cmd/main.go "ya.ru, google.com, mts.ru, stepik.org, mail.ru, dfhdfhrtdhrth.com"
